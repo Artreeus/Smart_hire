@@ -57,7 +57,11 @@ test('public pages render live marketplace data without runtime errors', async (
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Find the right job. Smarter.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Opportunity should feel clear, not overwhelming.' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  await page.getByRole('button', { name: 'Open navigation' }).click();
+  await expect(page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('link', { name: 'Create account' })).toBeVisible();
+  await page.getByRole('button', { name: 'Close navigation' }).click();
   await page.goto('/jobs');
   await expect(page.getByRole('heading', { name: 'Find work that fits you.' })).toBeVisible();
   await expect(page.locator('.loading-state')).toHaveCount(0);
