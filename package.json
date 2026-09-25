@@ -8,7 +8,9 @@
     "build": "vite build",
     "start": "node server/start.js",
     "preview": "vite preview",
-    "server": "node server/start.js"
+    "server": "node server/start.js",
+    "test:e2e": "playwright test",
+    "test:e2e:production": "playwright test --config=playwright.production.config.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "4.3.4",
@@ -30,5 +32,8 @@
     "react-dom": "latest",
     "react-router-dom": "latest",
     "vite": "6.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
   }
 }
