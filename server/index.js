@@ -5,18 +5,20 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 import path from 'path';
 import mammoth from 'mammoth';
-import { PDFParse } from 'pdf-parse';
+import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { User, Company, Job, CV, Application, SavedJob, Notification, Report, Verification } from './models.js';
 import { allow, asyncHandler, auth, clean, optionalAuth, pageQuery, publicUser, randomToken, signToken, splitLines, uploadBuffer } from './lib.js';
 
 const app = express();
 if (!process.env.DATABASE_URL || !process.env.JWT_SECRET) throw new Error('DATABASE_URL and JWT_SECRET are required.');
+const publicAppUrl = process.env.APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : 'http://localhost:5173');
 
 app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-app.use(cors({ origin: process.env.APP_URL || 'http://localhost:5173', credentials: true }));
+app.use(cors({ origin: publicAppUrl, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false }));
 
@@ -30,7 +32,7 @@ async function askOpenRouter(system, prompt) {
   if (!process.env.OPENROUTER_API_KEY) return null;
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json', 'HTTP-Referer': process.env.APP_URL || 'http://localhost:5173', 'X-OpenRouter-Title': 'SmartHire' },
+    headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json', 'HTTP-Referer': publicAppUrl, 'X-OpenRouter-Title': 'SmartHire' },
     body: JSON.stringify({ model: process.env.OPENROUTER_MODEL || 'openrouter/free', temperature: 0.15, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }] }),
   });
   if (!response.ok) throw new Error(`AI provider returned ${response.status}.`);
@@ -75,7 +77,8 @@ app.post('/api/auth/signup', asyncHandler(async (req, res) => {
 }));
 
 app.post('/api/auth/login', asyncHandler(async (req, res) => {
-  const user = await User.findOne({ email: clean(req.body.email)?.toLowerCase() }).select('+password');
+  const identifier = clean(req.body.email)?.toLowerCase();
+  const user = await User.findOne({ $or: [{ email: identifier }, { username: identifier }] }).select('+password');
   if (!user || !(await bcrypt.compare(req.body.password || '', user.password))) return res.status(401).json({ error: 'Incorrect email or password.' });
   if (user.suspended) return res.status(403).json({ error: 'This account has been suspended.' });
   const company = user.role === 'company' ? await Company.findOne({ owner: user._id }) : null;
@@ -98,7 +101,7 @@ app.post('/api/company/logo', auth, allow('company'), imageUpload.single('image'
 app.post('/api/ai/analyze-cv', auth, allow('seeker'), documentUpload.single('cv'), asyncHandler(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Select a PDF, DOC, or DOCX file.' });
   let text = '';
-  if (req.file.mimetype === 'application/pdf') { const parser = new PDFParse({ data: req.file.buffer }); text = (await parser.getText()).text; await parser.destroy(); }
+  if (req.file.mimetype === 'application/pdf') text = (await pdfParse(req.file.buffer)).text;
   else if (req.file.mimetype.includes('wordprocessingml')) text = (await mammoth.extractRawText({ buffer: req.file.buffer })).value;
   else text = req.file.buffer.toString('utf8');
   let result;

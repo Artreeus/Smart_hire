@@ -6,14 +6,25 @@ let connectionPromise;
 let seedPromise;
 
 async function seedDatabase() {
-  if (process.env.SEED_DATABASE === 'false' || await Job.exists({})) return;
+  if (process.env.SEED_DATABASE === 'false') return;
+
+  let admin = await User.findOne({ role: 'admin' }).select('+password');
+  if (!admin) {
+    admin = await User.create({
+      name: 'SmartHire Admin', username: 'admin', email: 'admin@smarthire.demo',
+      password: await bcrypt.hash('admin', 12), role: 'admin', isEmailVerified: true,
+    });
+  } else {
+    admin.username = 'admin';
+    if (!(await bcrypt.compare('admin', admin.password))) admin.password = await bcrypt.hash('admin', 12);
+    admin.isEmailVerified = true;
+    admin.suspended = false;
+    await admin.save();
+  }
+
+  if (await Job.exists({})) return;
 
   const password = await bcrypt.hash('Demo12345', 12);
-  const admin = await User.findOneAndUpdate(
-    { email: 'admin@smarthire.demo' },
-    { $setOnInsert: { name: 'SmartHire Admin', email: 'admin@smarthire.demo', password, role: 'admin', isEmailVerified: true } },
-    { upsert: true, new: true },
-  );
   const owner = await User.findOneAndUpdate(
     { email: 'recruiter@technova.demo' },
     { $setOnInsert: { name: 'TechNova Ltd.', email: 'recruiter@technova.demo', password, role: 'company', isEmailVerified: true } },
@@ -50,7 +61,7 @@ async function seedDatabase() {
     status: 'active',
     safety: { score: 95, status: 'Safe to publish', summary: 'No obvious concerns found.', checkedAt: new Date() },
   })));
-  console.log(`Seeded SmartHire demo data. Admin: ${admin.email}`);
+  console.log('Seeded SmartHire demo data.');
 }
 
 export async function connectDatabase() {
