@@ -155,14 +155,18 @@ Vercel Functions accept payloads up to 4.5 MB, so SmartHire limits CV and verifi
 
 ## Seed data
 
-When the jobs collection is empty, SmartHire creates three example jobs and a platform administrator:
+SmartHire ensures a platform administrator exists and creates three example jobs when the jobs collection is empty:
 
 ```text
-Email: admin@smarthire.demo
-Password: Demo12345
+Username: admin
+Password: admin
 ```
 
 Change the password before any public deployment. Job seekers and company users should register through the application.
+
+### Live deployment
+
+The current production deployment is available at [https://nadiaproject.vercel.app](https://nadiaproject.vercel.app).
 
 ## Security design
 

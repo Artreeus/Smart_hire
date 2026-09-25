@@ -6,7 +6,6 @@
   "fluid": true,
   "functions": {
     "api/index.js": {
-      "memory": 1024,
       "maxDuration": 60
     }
   },
