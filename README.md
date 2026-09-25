@@ -140,6 +140,19 @@ npm start
 
 Express serves both the production React build and the API. Set `APP_URL` to the deployed origin and use a unique production `JWT_SECRET`.
 
+## Deploying to Vercel
+
+The repository includes a serverless entry point in `api/index.js`, cached MongoDB initialization, and `vercel.json` routing for the Vite SPA and Express API.
+
+1. Import `Artreeus/Smart_hire` in the Vercel dashboard.
+2. Keep the detected framework preset as **Vite**.
+3. Add every variable from `.env.example` under Project Settings → Environment Variables.
+4. Set `APP_URL` to the production URL, for example `https://your-project.vercel.app`.
+5. Set `SEED_DATABASE=false` after initial data has been created if you do not want automatic empty-database seeding.
+6. Deploy. Vercel runs `npm run build`, publishes `dist`, and sends `/api/*` requests to the Express function.
+
+Vercel Functions accept payloads up to 4.5 MB, so SmartHire limits CV and verification documents to 4 MB and profile/company images to 3 MB. For larger documents, move to a direct signed Cloudinary upload followed by asynchronous analysis.
+
 ## Seed data
 
 When the jobs collection is empty, SmartHire creates three example jobs and a platform administrator:
