@@ -42,10 +42,12 @@ test('public pages render without runtime errors', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('admin can navigate every workspace without a white screen', async ({ page }) => {
+test('admin can navigate every workspace without a white screen', async ({ page }, testInfo) => {
   const errors = monitorRuntimeErrors(page);
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await login(page, 'admin', 'admin');
   await expect(page.getByRole('heading', { name: 'Admin dashboard' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('admin-dashboard-1920.png'), fullPage: true });
   await assertRoutes(page, [
     ['/admin/users', 'Users'],
     ['/admin/companies', 'Companies'],

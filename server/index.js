@@ -160,7 +160,32 @@ app.post('/api/company/verification', auth, allow('company'), verificationUpload
 app.get('/api/company/verification', auth, allow('company'), asyncHandler(async (req, res) => { const company = await Company.findOne({ owner: req.user._id }); res.json({ company, verification: company ? await Verification.findOne({ company: company._id }).sort('-createdAt') : null }); }));
 
 // Admin
-app.get('/api/admin/stats', auth, allow('admin'), asyncHandler(async (_req, res) => { const [users, companies, jobs, pendingVerification, reports, applications] = await Promise.all([User.countDocuments(), Company.countDocuments(), Job.countDocuments({ status: 'active' }), Verification.countDocuments({ status: { $in: ['pending','under_review'] } }), Report.countDocuments({ status: { $in: ['pending','reviewing'] } }), Application.countDocuments()]); res.json({ users, companies, jobs, pendingVerification, reports, applications }); }));
+app.get('/api/admin/stats', auth, allow('admin'), asyncHandler(async (_req, res) => {
+  const [
+    users, companies, jobs, totalJobs, verifiedCompanies, pendingVerification, reports, applications,
+    userRoles, applicationStatuses, recentUsers, recentJobs,
+  ] = await Promise.all([
+    User.countDocuments(),
+    Company.countDocuments(),
+    Job.countDocuments({ status: 'active' }),
+    Job.countDocuments(),
+    Company.countDocuments({ verificationStatus: 'verified' }),
+    Verification.countDocuments({ status: { $in: ['pending', 'under_review'] } }),
+    Report.countDocuments({ status: { $in: ['pending', 'reviewing'] } }),
+    Application.countDocuments(),
+    User.aggregate([{ $group: { _id: '$role', count: { $sum: 1 } } }]),
+    Application.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
+    User.find().select('name email role createdAt').sort('-createdAt').limit(5).lean(),
+    Job.find().select('title status location createdAt company').populate('company', 'name').sort('-createdAt').limit(5).lean(),
+  ]);
+  res.json({
+    users, companies, jobs, totalJobs, verifiedCompanies, pendingVerification, reports, applications,
+    userRoles: Object.fromEntries(userRoles.map(item => [item._id, item.count])),
+    applicationStatuses: Object.fromEntries(applicationStatuses.map(item => [item._id, item.count])),
+    recentUsers,
+    recentJobs,
+  });
+}));
 app.get('/api/admin/users', auth, allow('admin'), asyncHandler(async (req, res) => { const { limit, skip, page } = pageQuery(req); const filter = req.query.q ? { $or: [{ name: new RegExp(req.query.q, 'i') }, { email: new RegExp(req.query.q, 'i') }] } : {}; const [users,total] = await Promise.all([User.find(filter).sort('-createdAt').skip(skip).limit(limit),User.countDocuments(filter)]); res.json({ users, pagination:{page,limit,total} }); }));
 app.patch('/api/admin/users/:id/suspend', auth, allow('admin'), asyncHandler(async (req, res) => { if (req.params.id === req.user._id.toString()) return res.status(400).json({ error: 'You cannot suspend your own account.' }); const user = await User.findByIdAndUpdate(req.params.id, { suspended: Boolean(req.body.suspended) }, { new: true }); res.json({ user }); }));
 app.get('/api/admin/companies', auth, allow('admin'), asyncHandler(async (_req, res) => res.json({ companies: await Company.find().populate('owner', 'name email suspended').sort('-createdAt') })));
