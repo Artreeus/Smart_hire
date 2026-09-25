@@ -5,7 +5,6 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import mongoose from 'mongoose';
-import bcrypt from 'bcryptjs';
 import path from 'path';
 import mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
@@ -13,7 +12,6 @@ import { User, Company, Job, CV, Application, SavedJob, Notification, Report, Ve
 import { allow, asyncHandler, auth, clean, optionalAuth, pageQuery, publicUser, randomToken, signToken, splitLines, uploadBuffer } from './lib.js';
 
 const app = express();
-const port = process.env.PORT || 3001;
 if (!process.env.DATABASE_URL || !process.env.JWT_SECRET) throw new Error('DATABASE_URL and JWT_SECRET are required.');
 
 app.set('trust proxy', 1);
@@ -22,9 +20,9 @@ app.use(cors({ origin: process.env.APP_URL || 'http://localhost:5173', credentia
 app.use(express.json({ limit: '1mb' }));
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false }));
 
-const documentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: (_, file, cb) => cb(null, ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(file.mimetype)) });
+const documentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 }, fileFilter: (_, file, cb) => cb(null, ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(file.mimetype)) });
 const imageUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 3 * 1024 * 1024 }, fileFilter: (_, file, cb) => cb(null, ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) });
-const verificationUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: (_, file, cb) => cb(null, ['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimetype)) });
+const verificationUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 }, fileFilter: (_, file, cb) => cb(null, ['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimetype)) });
 
 const mockProfile = { name: 'Candidate', education: 'Education details detected in CV', skills: ['Python', 'SQL', 'JavaScript', 'Git'], experience: '2+ years', certifications: [], roles: ['Software Engineer', 'Data Analyst'], keywords: ['problem solving', 'teamwork', 'REST APIs'], summary: 'A promising professional with relevant technical foundations.' };
 
@@ -169,24 +167,11 @@ app.patch('/api/admin/reports/:id', auth, allow('admin'), asyncHandler(async (re
 app.get('/api/admin/verifications', auth, allow('admin'), asyncHandler(async (_req, res) => res.json({ verifications: await Verification.find().populate('company').populate('submittedBy','name email').sort('-createdAt') })));
 app.patch('/api/admin/verifications/:id', auth, allow('admin'), asyncHandler(async (req, res) => { const status = req.body.status; if (!['verified','under_review','rejected'].includes(status)) return res.status(400).json({ error: 'Invalid verification status.' }); const verification = await Verification.findByIdAndUpdate(req.params.id, { status, reviewNote: clean(req.body.reviewNote), reviewedBy: req.user._id, reviewedAt: new Date() }, { new: true }); if (!verification) return res.status(404).json({ error: 'Verification request not found.' }); const company = await Company.findByIdAndUpdate(verification.company, { verificationStatus: status, ...(status === 'verified' ? { verifiedAt: new Date() } : {}) }, { new: true }); await Notification.create({ user: company.owner, title: `Company verification ${status.replace('_',' ')}`, text: req.body.reviewNote || `Your verification status is now ${status}.`, type: 'verification', link: '/verification' }); res.json({ verification, company }); }));
 
-app.use(express.static(path.resolve('dist')));
-app.use((req, res, next) => req.method === 'GET' && !req.path.startsWith('/api/') ? res.sendFile(path.resolve('dist/index.html')) : next());
+if (!process.env.VERCEL) {
+  app.use(express.static(path.resolve('dist')));
+  app.use((req, res, next) => req.method === 'GET' && !req.path.startsWith('/api/') ? res.sendFile(path.resolve('dist/index.html')) : next());
+}
 
 app.use((err, _req, res, _next) => { console.error(err); if (err.code === 11000) return res.status(409).json({ error: 'This record already exists.' }); res.status(err.name === 'ValidationError' ? 400 : 500).json({ error: err.message || 'Something went wrong.' }); });
 
-async function seed() {
-  if (await Job.exists({})) return;
-  const password = await bcrypt.hash('Demo12345', 12);
-  const admin = await User.findOneAndUpdate({ email: 'admin@smarthire.demo' }, { $setOnInsert: { name: 'SmartHire Admin', email: 'admin@smarthire.demo', password, role: 'admin', isEmailVerified: true } }, { upsert: true, new: true });
-  const owner = await User.findOneAndUpdate({ email: 'recruiter@technova.demo' }, { $setOnInsert: { name: 'TechNova Ltd.', email: 'recruiter@technova.demo', password, role: 'company', isEmailVerified: true } }, { upsert: true, new: true });
-  const company = await Company.findOneAndUpdate({ owner: owner._id }, { $setOnInsert: { owner: owner._id, name: 'TechNova Ltd.', email: owner.email, website: 'https://technova.example', address: 'Banani, Dhaka', industry: 'Technology', size: '51–200', verificationStatus: 'verified', verifiedAt: new Date() } }, { upsert: true, new: true });
-  const samples = [
-    ['Software Engineer','Dhaka','Hybrid',['Python','SQL','REST APIs','Git'],50000,70000],
-    ['Data Analyst','Dhaka','Remote',['SQL','Python','Power BI','Excel'],45000,60000],
-    ['Junior ML Engineer','Chattogram','On-site',['Python','Machine Learning','Pandas','Git'],55000,80000],
-  ];
-  await Job.insertMany(samples.map(([title,location,workMode,skills,salaryMin,salaryMax]) => ({ company: company._id, createdBy: owner._id, title, description: `Join ${company.name} to work on meaningful products with a collaborative team.`, responsibilities: ['Deliver high-quality work','Collaborate across teams','Continuously improve'], requirements: ['Relevant professional experience','Strong communication and problem solving'], skills, education: 'Bachelor’s degree or equivalent experience', experience: '2+ years', salaryMin, salaryMax, salaryLabel: `৳${salaryMin.toLocaleString()}–${salaryMax.toLocaleString()}`, location, jobType: 'Full Time', workMode, industry: 'Technology', applicationDeadline: new Date(Date.now()+30*86400000), status: 'active', safety: { score: 95, status: 'Safe to publish', summary: 'No obvious concerns found.', checkedAt: new Date() } })));
-  console.log(`Seeded SmartHire demo data. Admin: ${admin.email} / Demo12345`);
-}
-
-mongoose.connect(process.env.DATABASE_URL).then(async () => { console.log('MongoDB connected'); await seed(); app.listen(port, () => console.log(`SmartHire API running on http://localhost:${port}`)); }).catch(error => { console.error('MongoDB connection failed:', error.message); process.exit(1); });
+export default app;

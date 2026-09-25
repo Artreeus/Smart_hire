@@ -4,11 +4,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"vite\" \"node --watch server/index.js\"",
+    "dev": "concurrently \"vite\" \"node --watch server/start.js\"",
     "build": "vite build",
-    "start": "node server/index.js",
+    "start": "node server/start.js",
     "preview": "vite preview",
-    "server": "node server/index.js"
+    "server": "node server/start.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "4.3.4",
