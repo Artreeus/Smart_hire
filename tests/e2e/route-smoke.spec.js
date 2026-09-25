@@ -31,14 +31,39 @@ async function assertRoutes(page, routes, navigateInApp = false) {
   }
 }
 
-test('public pages render without runtime errors', async ({ page }) => {
+test('public pages render live marketplace data without runtime errors', async ({ page }, testInfo) => {
   const errors = monitorRuntimeErrors(page);
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  const overviewResponse = await page.request.get('/api/public/overview');
+  expect(overviewResponse.ok()).toBeTruthy();
+  const overview = await overviewResponse.json();
+  expect(overview.stats.activeJobs).toBeGreaterThanOrEqual(12);
+  expect(overview.stats.companies).toBeGreaterThanOrEqual(6);
+  expect(overview.latestJobs.length).toBeGreaterThan(0);
   await assertRoutes(page, [
     ['/', 'Find the right job. Smarter.'],
     ['/jobs', 'Find work that fits you.'],
     ['/login', 'Log in to SmartHire'],
     ['/signup', 'Create your account'],
   ]);
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Meet teams hiring on SmartHire' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('public-home-1920.png'), fullPage: true });
+  const liveJob = overview.latestJobs[0];
+  await page.goto(`/jobs/${liveJob._id}`);
+  await expect(page.getByRole('heading', { name: liveJob.title, exact: true })).toBeVisible();
+  await expect(page.getByText('Safety checked')).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Find the right job. Smarter.' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  await page.goto('/jobs');
+  await expect(page.getByRole('heading', { name: 'Find work that fits you.' })).toBeVisible();
+  await expect(page.locator('.loading-state')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: /live opportunities/ })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  await page.screenshot({ path: testInfo.outputPath('public-jobs-mobile.png'), fullPage: true });
   expect(errors).toEqual([]);
 });
 

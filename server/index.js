@@ -124,6 +124,24 @@ app.post('/api/ai/match', auth, asyncHandler(async (req, res) => {
 }));
 
 // Jobs
+app.get('/api/public/overview', asyncHandler(async (_req, res) => {
+  const [activeJobs, companies, jobSeekers, verifiedCompanies, featuredCompanies, latestJobs, jobCounts] = await Promise.all([
+    Job.countDocuments({ status: 'active' }),
+    Company.countDocuments(),
+    User.countDocuments({ role: 'seeker' }),
+    Company.countDocuments({ verificationStatus: 'verified' }),
+    Company.find({ verificationStatus: 'verified' }).select('name logo industry size description location address verificationStatus').sort('-verifiedAt').limit(6).lean(),
+    Job.find({ status: 'active' }).populate('company', 'name logo verificationStatus industry').sort('-createdAt').limit(6).lean(),
+    Job.aggregate([{ $match: { status: 'active' } }, { $group: { _id: '$company', count: { $sum: 1 } } }]),
+  ]);
+  const counts = new Map(jobCounts.map(item => [item._id.toString(), item.count]));
+  res.json({
+    stats: { activeJobs, companies, jobSeekers, verifiedCompanies },
+    companies: featuredCompanies.map(company => ({ ...company, openJobs: counts.get(company._id.toString()) || 0 })),
+    latestJobs,
+  });
+}));
+
 app.get('/api/jobs', optionalAuth, asyncHandler(async (req, res) => {
   const { page, limit, skip } = pageQuery(req); const filter = { status: 'active' };
   if (req.query.q) filter.$text = { $search: req.query.q };
@@ -131,6 +149,8 @@ app.get('/api/jobs', optionalAuth, asyncHandler(async (req, res) => {
   if (req.query.jobType) filter.jobType = req.query.jobType;
   if (req.query.workMode) filter.workMode = req.query.workMode;
   if (req.query.industry) filter.industry = req.query.industry;
+  if (req.query.minSalary) filter.salaryMax = { $gte: Number(req.query.minSalary) || 0 };
+  if (req.query.datePosted) filter.createdAt = { $gte: new Date(Date.now() - Math.max(1, Number(req.query.datePosted)) * 86400000) };
   const sort = req.query.sort === 'oldest' ? 'createdAt' : '-createdAt';
   const [jobs, total] = await Promise.all([Job.find(filter).populate('company', 'name logo verificationStatus industry').sort(sort).skip(skip).limit(limit), Job.countDocuments(filter)]);
   let saved = new Set(), cv = null; if (req.user?.role === 'seeker') { saved = new Set((await SavedJob.find({ user: req.user._id }).select('job')).map(x => x.job.toString())); cv = await CV.findOne({ user: req.user._id, isPrimary: true }); }
@@ -138,10 +158,10 @@ app.get('/api/jobs', optionalAuth, asyncHandler(async (req, res) => {
 }));
 app.get('/api/jobs/:id', optionalAuth, asyncHandler(async (req, res) => { const job = await Job.findByIdAndUpdate(req.params.id, { $inc: { viewCount: 1 } }, { new: true }).populate('company'); if (!job || (job.status !== 'active' && req.user?.role !== 'admin')) return res.status(404).json({ error: 'Job not found.' }); let match = null; if (req.user?.role === 'seeker') { const cv = await CV.findOne({ user: req.user._id, isPrimary: true }); if (cv) match = fallbackMatch(cv, job); } res.json({ job, match }); }));
 app.post('/api/jobs/safety-check', auth, allow('company', 'admin'), asyncHandler(async (req, res) => res.json(await analyzeSafety(req.body))));
-app.post('/api/jobs', auth, allow('company'), asyncHandler(async (req, res) => { const company = await Company.findOne({ owner: req.user._id }); if (!company) return res.status(400).json({ error: 'Complete your company profile first.' }); const payload = { ...req.body, company: company._id, createdBy: req.user._id, responsibilities: splitLines(req.body.responsibilities), requirements: splitLines(req.body.requirements), skills: splitLines(req.body.skills) }; const safety = await analyzeSafety(payload); const job = await Job.create({ ...payload, safety: { ...safety, checkedAt: new Date() }, status: safety.status === 'Safe to publish' ? 'active' : 'under_review' }); res.status(201).json({ job, safety }); }));
+app.post('/api/jobs', auth, allow('company'), asyncHandler(async (req, res) => { const company = await Company.findOne({ owner: req.user._id }); if (!company) return res.status(400).json({ error: 'Complete your company profile first.' }); const payload = { ...req.body, company: company._id, createdBy: req.user._id, responsibilities: splitLines(req.body.responsibilities), requirements: splitLines(req.body.requirements), skills: splitLines(req.body.skills), benefits: splitLines(req.body.benefits) }; const safety = await analyzeSafety(payload); const job = await Job.create({ ...payload, safety: { ...safety, checkedAt: new Date() }, status: safety.status === 'Safe to publish' ? 'active' : 'under_review' }); res.status(201).json({ job, safety }); }));
 app.get('/api/company/jobs', auth, allow('company'), asyncHandler(async (req, res) => { const company = await Company.findOne({ owner: req.user._id }); res.json({ jobs: company ? await Job.find({ company: company._id }).sort('-createdAt') : [] }); }));
 app.get('/api/dashboard/company', auth, allow('company'), asyncHandler(async (req, res) => { const company = await Company.findOne({ owner: req.user._id }); if (!company) return res.json({ activeJobs: 0, applicants: 0, shortlisted: 0, interviews: 0 }); const [activeJobs, applicants, shortlisted, interviews] = await Promise.all([Job.countDocuments({ company: company._id, status: 'active' }), Application.countDocuments({ company: company._id }), Application.countDocuments({ company: company._id, status: 'Shortlisted' }), Application.countDocuments({ company: company._id, status: 'Interview' })]); res.json({ activeJobs, applicants, shortlisted, interviews, verificationStatus: company.verificationStatus }); }));
-app.patch('/api/jobs/:id', auth, allow('company', 'admin'), asyncHandler(async (req, res) => { const job = await Job.findById(req.params.id); if (!job) return res.status(404).json({ error: 'Job not found.' }); if (req.user.role === 'company' && job.createdBy.toString() !== req.user._id.toString()) return res.status(403).json({ error: 'You can only manage your own jobs.' }); const allowed = ['title','description','responsibilities','requirements','skills','education','experience','salaryMin','salaryMax','salaryLabel','location','jobType','workMode','industry','applicationDeadline','status']; for (const key of allowed) if (req.body[key] !== undefined) job[key] = ['responsibilities','requirements','skills'].includes(key) ? splitLines(req.body[key]) : req.body[key]; await job.save(); res.json({ job }); }));
+app.patch('/api/jobs/:id', auth, allow('company', 'admin'), asyncHandler(async (req, res) => { const job = await Job.findById(req.params.id); if (!job) return res.status(404).json({ error: 'Job not found.' }); if (req.user.role === 'company' && job.createdBy.toString() !== req.user._id.toString()) return res.status(403).json({ error: 'You can only manage your own jobs.' }); const allowed = ['title','description','responsibilities','requirements','skills','benefits','education','experience','salaryMin','salaryMax','salaryLabel','location','jobType','workMode','industry','applicationDeadline','status']; for (const key of allowed) if (req.body[key] !== undefined) job[key] = ['responsibilities','requirements','skills','benefits'].includes(key) ? splitLines(req.body[key]) : req.body[key]; await job.save(); res.json({ job }); }));
 app.delete('/api/jobs/:id', auth, allow('company', 'admin'), asyncHandler(async (req, res) => { const job = await Job.findById(req.params.id); if (!job) return res.status(404).json({ error: 'Job not found.' }); if (req.user.role === 'company' && job.createdBy.toString() !== req.user._id.toString()) return res.status(403).json({ error: 'You can only manage your own jobs.' }); job.status = 'removed'; await job.save(); res.json({ message: 'Job removed.' }); }));
 
 // Saved jobs and applications

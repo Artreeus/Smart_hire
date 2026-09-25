@@ -29,6 +29,11 @@ export function toUiJob(job) {
     salary: job.salaryLabel || (job.salaryMin ? `৳${job.salaryMin.toLocaleString()}–${job.salaryMax?.toLocaleString() || '+'}` : 'Salary negotiable'),
     deadline: job.applicationDeadline ? new Date(job.applicationDeadline).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Open',
     posted: job.createdAt ? new Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(-Math.max(1, Math.floor((Date.now() - new Date(job.createdAt)) / 86400000)), 'day') : 'Recently',
-    match: job.match || 75,
+    match: Number.isFinite(job.match) ? job.match : null,
+    responsibilities: job.responsibilities || [],
+    requirements: job.requirements || [],
+    benefits: job.benefits || [],
+    skills: job.skills || [],
+    companyDetails: company,
   };
 }

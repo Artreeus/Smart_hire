@@ -39,7 +39,7 @@ const JobSchema = new Schema({
   createdBy: { type: objectId, ref: 'User', required: true },
   title: { type: String, required: true, trim: true },
   description: { type: String, required: true },
-  responsibilities: [String], requirements: [String], skills: [String],
+  responsibilities: [String], requirements: [String], skills: [String], benefits: [String],
   education: String, experience: String,
   salaryMin: Number, salaryMax: Number, salaryLabel: String,
   location: { type: String, required: true },
