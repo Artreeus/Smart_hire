@@ -40,6 +40,7 @@ test('public pages render live marketplace data without runtime errors', async (
   expect(overview.stats.activeJobs).toBeGreaterThanOrEqual(12);
   expect(overview.stats.companies).toBeGreaterThanOrEqual(6);
   expect(overview.latestJobs.length).toBeGreaterThan(0);
+  expect(overview.generatedAt).toBeTruthy();
   await assertRoutes(page, [
     ['/', 'Find the right job. Smarter.'],
     ['/jobs', 'Find work that fits you.'],
@@ -47,7 +48,8 @@ test('public pages render live marketplace data without runtime errors', async (
     ['/signup', 'Create your account'],
   ]);
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Meet teams hiring on SmartHire' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Teams worth knowing. Roles worth exploring.' })).toBeVisible();
+  await expect(page.getByText('Live talent marketplace')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('public-home-1920.png'), fullPage: true });
   const liveJob = overview.latestJobs[0];
@@ -64,6 +66,7 @@ test('public pages render live marketplace data without runtime errors', async (
   await page.getByRole('button', { name: 'Close navigation' }).click();
   await page.goto('/jobs');
   await expect(page.getByRole('heading', { name: 'Find work that fits you.' })).toBeVisible();
+  await expect(page.getByText('Live from SmartHire')).toBeVisible();
   await expect(page.locator('.loading-state')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: /live opportunities/ })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();

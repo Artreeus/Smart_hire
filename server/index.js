@@ -139,6 +139,7 @@ app.get('/api/public/overview', asyncHandler(async (_req, res) => {
     stats: { activeJobs, companies, jobSeekers, verifiedCompanies },
     companies: featuredCompanies.map(company => ({ ...company, openJobs: counts.get(company._id.toString()) || 0 })),
     latestJobs,
+    generatedAt: new Date().toISOString(),
   });
 }));
 
@@ -154,7 +155,7 @@ app.get('/api/jobs', optionalAuth, asyncHandler(async (req, res) => {
   const sort = req.query.sort === 'oldest' ? 'createdAt' : '-createdAt';
   const [jobs, total] = await Promise.all([Job.find(filter).populate('company', 'name logo verificationStatus industry').sort(sort).skip(skip).limit(limit), Job.countDocuments(filter)]);
   let saved = new Set(), cv = null; if (req.user?.role === 'seeker') { saved = new Set((await SavedJob.find({ user: req.user._id }).select('job')).map(x => x.job.toString())); cv = await CV.findOne({ user: req.user._id, isPrimary: true }); }
-  res.json({ jobs: jobs.map(j => ({ ...j.toObject(), saved: saved.has(j._id.toString()), match: cv ? fallbackMatch(cv, j).overall : null })), pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+  res.json({ jobs: jobs.map(j => ({ ...j.toObject(), saved: saved.has(j._id.toString()), match: cv ? fallbackMatch(cv, j).overall : null })), pagination: { page, limit, total, pages: Math.ceil(total / limit) }, generatedAt: new Date().toISOString() });
 }));
 app.get('/api/jobs/:id', optionalAuth, asyncHandler(async (req, res) => { const job = await Job.findByIdAndUpdate(req.params.id, { $inc: { viewCount: 1 } }, { new: true }).populate('company'); if (!job || (job.status !== 'active' && req.user?.role !== 'admin')) return res.status(404).json({ error: 'Job not found.' }); let match = null; if (req.user?.role === 'seeker') { const cv = await CV.findOne({ user: req.user._id, isPrimary: true }); if (cv) match = fallbackMatch(cv, job); } res.json({ job, match }); }));
 app.post('/api/jobs/safety-check', auth, allow('company', 'admin'), asyncHandler(async (req, res) => res.json(await analyzeSafety(req.body))));
